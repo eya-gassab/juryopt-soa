@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package juryopt.optimizer.v1;
+
+option java_multiple_files = true;
+option java_package = "com.juryopt.optimizer.grpc";
+
+service ScheduleOptimizer {
+  // Unaire : détecte les conflits d'un planning proposé.
+  // Erreur : INVALID_ARGUMENT si la liste d'affectations est vide.
+  rpc EvaluateSchedule(EvaluateScheduleRequest) returns (EvaluateScheduleResponse);
+
+  // Streaming serveur : calcule un planning sans conflit et diffuse la progression.
+  // Erreurs : INVALID_ARGUMENT (entrée vide ou invalide),
+  //           FAILED_PRECONDITION (moins de créneaux que de soutenances).
+  rpc OptimizeSchedule(OptimizeScheduleRequest) returns (stream OptimizationProgress);
+}
+
+// ---------- Types communs ----------
+
+message ProposedAssignment {
+  string request_id = 1;
+  string slot_code = 2;
+  string room_code = 3;
+  string supervisor_code = 4;
+  string president_code = 5;
+  string rapporteur_code = 6;
+}
+
+// ---------- EvaluateSchedule ----------
+
+message EvaluateScheduleRequest {
+  repeated ProposedAssignment assignments = 1;
+}
+
+enum ConflictType {
+  CONFLICT_TYPE_UNSPECIFIED = 0;
+  ROOM_DOUBLE_BOOKING = 1;
+  TEACHER_DOUBLE_BOOKING = 2;
+}
+
+message Conflict {
+  ConflictType type = 1;
+  string slot_code = 2;
+  string resource_code = 3;          // code de la salle ou de l'enseignant en conflit
+  repeated string request_ids = 4;   // soutenances impliquées
+}
+
+message EvaluateScheduleResponse {
+  repeated Conflict conflicts = 1;   // liste vide = planning valide
+}
+
+// ---------- OptimizeSchedule ----------
+
+message DefenseItem {
+  string request_id = 1;
+  string supervisor_code = 2;
+  string president_code = 3;
+  string rapporteur_code = 4;
+}
+
+message SlotItem {
+  string slot_code = 1;
+  string room_code = 2;
+}
+
+message OptimizeScheduleRequest {
+  repeated DefenseItem defenses = 1;
+  repeated SlotItem slots = 2;
+}
+
+enum OptimizationStage {
+  OPTIMIZATION_STAGE_UNSPECIFIED = 0;
+  GREEDY_PLACEMENT = 1;
+  LOAD_BALANCING_PASS = 2;
+  COMPLETED = 3;
+}
+
+message OptimizationProgress {
+  OptimizationStage stage = 1;
+  int32 pass_number = 2;             // numéro de la passe d'équilibrage (0 sinon)
+  int32 assigned_count = 3;
+  int32 conflict_count = 4;
+  double balance_score = 5;          // écart-type de la charge de jury par enseignant (0 = équilibré)
+  repeated ProposedAssignment assignments = 6;  // renseigné uniquement à l'étape COMPLETED
+}
