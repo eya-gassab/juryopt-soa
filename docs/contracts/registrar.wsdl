@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:sch="http://juryopt.com/registrar" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="http://juryopt.com/registrar" targetNamespace="http://juryopt.com/registrar">
+  <wsdl:types>
+    <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://juryopt.com/registrar">
+
+  <xs:simpleType name="Matricule">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="20"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ===== Opération : VerifyStudentEligibility ===== -->
+  <xs:element name="VerifyStudentEligibilityRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="studentMatricule" type="tns:Matricule"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="VerifyStudentEligibilityResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="studentMatricule" type="tns:Matricule"/>
+        <xs:element name="fullName" type="xs:string"/>
+        <xs:element name="creditsEarned" type="xs:int"/>
+        <xs:element name="requiredCredits" type="xs:int"/>
+        <xs:element name="clearanceToken" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ===== Opération : RegisterOfficialDefense ===== -->
+  <xs:element name="RegisterOfficialDefenseRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="studentMatricule" type="tns:Matricule"/>
+        <xs:element name="clearanceToken" type="xs:string"/>
+        <xs:element name="slotCode" type="xs:string"/>
+        <xs:element name="roomCode" type="xs:string"/>
+        <xs:element name="jurySummary" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="RegisterOfficialDefenseResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="registryCode" type="xs:string"/>
+        <xs:element name="registeredAt" type="xs:dateTime"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ===== SOAP Faults (détails typés) ===== -->
+  <xs:element name="StudentNotFoundFault">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="studentMatricule" type="tns:Matricule"/>
+        <xs:element name="message" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="AcademicIneligibilityFault">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="studentMatricule" type="tns:Matricule"/>
+        <xs:element name="reason" type="xs:string"/>
+        <xs:element name="creditsEarned" type="xs:int"/>
+        <xs:element name="requiredCredits" type="xs:int"/>
+        <xs:element name="message" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="DuplicateRegistrationFault">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="studentMatricule" type="tns:Matricule"/>
+        <xs:element name="existingRegistryCode" type="xs:string"/>
+        <xs:element name="message" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>
+  </wsdl:types>
+  <wsdl:message name="VerifyStudentEligibilityResponse">
+    <wsdl:part element="tns:VerifyStudentEligibilityResponse" name="VerifyStudentEligibilityResponse">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="DuplicateRegistrationFault">
+    <wsdl:part element="tns:DuplicateRegistrationFault" name="DuplicateRegistrationFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="StudentNotFoundFault">
+    <wsdl:part element="tns:StudentNotFoundFault" name="StudentNotFoundFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="VerifyStudentEligibilityRequest">
+    <wsdl:part element="tns:VerifyStudentEligibilityRequest" name="VerifyStudentEligibilityRequest">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="RegisterOfficialDefenseRequest">
+    <wsdl:part element="tns:RegisterOfficialDefenseRequest" name="RegisterOfficialDefenseRequest">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="AcademicIneligibilityFault">
+    <wsdl:part element="tns:AcademicIneligibilityFault" name="AcademicIneligibilityFault">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:message name="RegisterOfficialDefenseResponse">
+    <wsdl:part element="tns:RegisterOfficialDefenseResponse" name="RegisterOfficialDefenseResponse">
+    </wsdl:part>
+  </wsdl:message>
+  <wsdl:portType name="RegistrarPort">
+    <wsdl:operation name="VerifyStudentEligibility">
+      <wsdl:input message="tns:VerifyStudentEligibilityRequest" name="VerifyStudentEligibilityRequest">
+    </wsdl:input>
+      <wsdl:output message="tns:VerifyStudentEligibilityResponse" name="VerifyStudentEligibilityResponse">
+    </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="DuplicateRegistration">
+      <wsdl:fault message="tns:DuplicateRegistrationFault" name="DuplicateRegistrationFault">
+    </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="StudentNotFound">
+      <wsdl:fault message="tns:StudentNotFoundFault" name="StudentNotFoundFault">
+    </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="RegisterOfficialDefense">
+      <wsdl:input message="tns:RegisterOfficialDefenseRequest" name="RegisterOfficialDefenseRequest">
+    </wsdl:input>
+      <wsdl:output message="tns:RegisterOfficialDefenseResponse" name="RegisterOfficialDefenseResponse">
+    </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="AcademicIneligibility">
+      <wsdl:fault message="tns:AcademicIneligibilityFault" name="AcademicIneligibilityFault">
+    </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="RegistrarPortSoap11" type="tns:RegistrarPort">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="VerifyStudentEligibility">
+      <soap:operation soapAction=""/>
+      <wsdl:input name="VerifyStudentEligibilityRequest">
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output name="VerifyStudentEligibilityResponse">
+        <soap:body use="literal"/>
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="DuplicateRegistration">
+      <soap:operation soapAction=""/>
+      <wsdl:fault name="DuplicateRegistrationFault">
+        <soap:fault name="DuplicateRegistrationFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="StudentNotFound">
+      <soap:operation soapAction=""/>
+      <wsdl:fault name="StudentNotFoundFault">
+        <soap:fault name="StudentNotFoundFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="RegisterOfficialDefense">
+      <soap:operation soapAction=""/>
+      <wsdl:input name="RegisterOfficialDefenseRequest">
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output name="RegisterOfficialDefenseResponse">
+        <soap:body use="literal"/>
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="AcademicIneligibility">
+      <soap:operation soapAction=""/>
+      <wsdl:fault name="AcademicIneligibilityFault">
+        <soap:fault name="AcademicIneligibilityFault" use="literal"/>
+      </wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="RegistrarPortService">
+    <wsdl:port binding="tns:RegistrarPortSoap11" name="RegistrarPortSoap11">
+      <soap:address location="http://localhost:8083/ws"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>
