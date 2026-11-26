@@ -1,0 +1,306 @@
+openapi: 3.0.1
+info:
+  title: OpenAPI definition
+  version: v0
+servers:
+- url: http://localhost:8081
+  description: Generated server url
+tags:
+- name: Slots
+  description: Gestion des créneaux et salles disponibles
+- name: Defenses
+  description: Gestion CRUD des demandes de soutenance de PFE
+paths:
+  /api/v1/defenses/{id}:
+    get:
+      tags:
+      - Defenses
+      summary: Récupérer une demande de soutenance par identifiant
+      operationId: findById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "404":
+          description: Demande introuvable
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "200":
+          description: Demande trouvée
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+    put:
+      tags:
+      - Defenses
+      summary: Mettre à jour une demande de soutenance
+      operationId: update
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DefenseRequestDto"
+        required: true
+      responses:
+        "409":
+          description: Matricule déjà utilisé par une autre demande
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "200":
+          description: Demande mise à jour
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "400":
+          description: Données d'entrée invalides
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "404":
+          description: Demande introuvable
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "422":
+          description: Jury non distinct ou demande déjà SCHEDULED/PUBLISHED
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+    delete:
+      tags:
+      - Defenses
+      summary: Supprimer une demande de soutenance
+      operationId: delete
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Demande supprimée
+        "404":
+          description: Demande introuvable
+        "422":
+          description: Impossible de supprimer une demande SCHEDULED/PUBLISHED
+  /api/v1/slots:
+    get:
+      tags:
+      - Slots
+      summary: Lister tous les créneaux
+      operationId: findAll
+      responses:
+        "200":
+          description: Liste des créneaux retournée
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SlotResponseDto"
+    post:
+      tags:
+      - Slots
+      summary: Créer un créneau/salle disponible
+      operationId: create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SlotRequestDto"
+        required: true
+      responses:
+        "201":
+          description: Créneau créé (en-tête Location renseigné)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SlotResponseDto"
+        "400":
+          description: Données d'entrée invalides
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SlotResponseDto"
+        "409":
+          description: "Le couple (créneau, salle) existe déjà"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SlotResponseDto"
+  /api/v1/defenses:
+    get:
+      tags:
+      - Defenses
+      summary: Lister toutes les demandes de soutenance
+      operationId: findAll_1
+      responses:
+        "200":
+          description: Liste des demandes retournée
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DefenseResponseDto"
+    post:
+      tags:
+      - Defenses
+      summary: Créer une demande de soutenance
+      operationId: create_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DefenseRequestDto"
+        required: true
+      responses:
+        "400":
+          description: Données d'entrée invalides
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "409":
+          description: Une demande existe déjà pour ce matricule
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "201":
+          description: Demande créée (en-tête Location renseigné)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "422":
+          description: Règle métier violée (membres du jury non distincts)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+components:
+  schemas:
+    DefenseRequestDto:
+      required:
+      - presidentCode
+      - projectTitle
+      - rapporteurCode
+      - studentMatricule
+      - supervisorCode
+      type: object
+      properties:
+        studentMatricule:
+          maxLength: 20
+          minLength: 0
+          pattern: "^ETU-\\d{4}-\\d{3}$"
+          type: string
+          example: ETU-2026-001
+        studentName:
+          maxLength: 120
+          minLength: 0
+          type: string
+          nullable: true
+          example: Amine Ben Salem
+        projectTitle:
+          maxLength: 200
+          minLength: 5
+          type: string
+          example: Plateforme SOA de planification des soutenances
+        supervisorCode:
+          pattern: "^PROF-\\d{2,4}$"
+          type: string
+          example: PROF-01
+        presidentCode:
+          pattern: "^PROF-\\d{2,4}$"
+          type: string
+          example: PROF-02
+        rapporteurCode:
+          pattern: "^PROF-\\d{2,4}$"
+          type: string
+          example: PROF-03
+    DefenseResponseDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        studentMatricule:
+          type: string
+        studentName:
+          type: string
+        projectTitle:
+          type: string
+        supervisorCode:
+          type: string
+        presidentCode:
+          type: string
+        rapporteurCode:
+          type: string
+        status:
+          type: string
+          enum:
+          - PROVISIONAL_PENDING_CLEARANCE
+          - ELIGIBLE
+          - SCHEDULED
+          - PUBLISHED
+        clearanceToken:
+          type: string
+        registryCode:
+          type: string
+        assignedSlotCode:
+          type: string
+        assignedRoomCode:
+          type: string
+    SlotRequestDto:
+      required:
+      - roomCode
+      - slotCode
+      type: object
+      properties:
+        slotCode:
+          pattern: "^\\d{4}-\\d{2}-\\d{2}_\\d{2}:\\d{2}$"
+          type: string
+          example: 2026-06-15_09:00
+        roomCode:
+          pattern: "^[A-Z]+-[A-Z0-9]+$"
+          type: string
+          example: SALLE-A1
+        available:
+          type: boolean
+          example: true
+          default: true
+    SlotResponseDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        slotCode:
+          type: string
+        roomCode:
+          type: string
+        available:
+          type: boolean
