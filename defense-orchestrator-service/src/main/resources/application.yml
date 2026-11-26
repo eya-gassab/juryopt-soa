@@ -17,11 +17,70 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,circuitbreakers,retries
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
 
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+juryopt:
+  soap:
+    registrar-url: ${SOAP_SERVICE_URL:http://localhost:8083/ws}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 3000
+  grpc:
+    optimizer-deadline-seconds: 5
+
+grpc:
+  client:
+    schedule-optimizer:
+      address: dns:///${GRPC_OPTIMIZER_HOST:localhost}:${GRPC_OPTIMIZER_PORT:9090}
+      negotiation-type: plaintext
+
+resilience4j:
+  retry:
+    instances:
+      registrarSoap:
+        max-attempts: 2
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        ignore-exceptions:
+          - com.juryopt.orchestrator.exception.ResourceNotFoundException
+          - com.juryopt.orchestrator.exception.BusinessRuleException
+          - com.juryopt.orchestrator.exception.DuplicateResourceException
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+  circuitbreaker:
+    instances:
+      registrarSoap:
+        register-health-indicator: true
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 4
+        minimum-number-of-calls: 4
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+        ignore-exceptions:
+          - com.juryopt.orchestrator.exception.ResourceNotFoundException
+          - com.juryopt.orchestrator.exception.BusinessRuleException
+          - com.juryopt.orchestrator.exception.DuplicateResourceException
+      optimizerGrpc:
+        register-health-indicator: true
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 4
+        minimum-number-of-calls: 4
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+        ignore-exceptions:
+          - com.juryopt.orchestrator.exception.ResourceNotFoundException
+          - com.juryopt.orchestrator.exception.BusinessRuleException
+          - com.juryopt.orchestrator.exception.DuplicateResourceException
