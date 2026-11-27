@@ -1,6 +1,26 @@
 spring:
   application:
     name: api-gateway
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 3000
+        response-timeout: 10s
+      routes:
+        - id: orchestrator-api
+          uri: ${ORCHESTRATOR_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/v1/**
+        - id: orchestrator-docs
+          uri: ${ORCHESTRATOR_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/swagger-ui.html,/swagger-ui/**,/v3/api-docs,/v3/api-docs/**,/v3/api-docs.yaml
+        - id: orchestrator-health
+          uri: ${ORCHESTRATOR_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/ops/orchestrator/health
+          filters:
+            - SetPath=/actuator/health
 
 server:
   port: 8080
@@ -10,3 +30,6 @@ management:
     web:
       exposure:
         include: health,info
+  endpoint:
+    health:
+      show-details: always

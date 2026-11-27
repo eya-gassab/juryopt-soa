@@ -12,6 +12,7 @@ spring:
 
 server:
   port: 8081
+  forward-headers-strategy: framework
 
 management:
   endpoints:
@@ -60,6 +61,7 @@ resilience4j:
     instances:
       registrarSoap:
         register-health-indicator: true
+        allow-health-indicator-to-fail: false
         sliding-window-type: COUNT_BASED
         sliding-window-size: 4
         minimum-number-of-calls: 4
@@ -73,6 +75,7 @@ resilience4j:
           - com.juryopt.orchestrator.exception.DuplicateResourceException
       optimizerGrpc:
         register-health-indicator: true
+        allow-health-indicator-to-fail: false
         sliding-window-type: COUNT_BASED
         sliding-window-size: 4
         minimum-number-of-calls: 4

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8081}"
+HEALTH_URL="${HEALTH_URL:-$BASE_URL/actuator/health}"
 PHASE="${1:-help}"
 
 print_response() {
@@ -29,8 +30,8 @@ call_api() {
 }
 
 show_circuit_breakers() {
-  echo "--- Etat /actuator/health (circuitBreakers) ---"
-  curl -sS "$BASE_URL/actuator/health" | python3 -c '
+  echo "--- Etat $HEALTH_URL (circuitBreakers) ---"
+  curl -sS "$HEALTH_URL" | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
 cb = data.get("components", {}).get("circuitBreakers", {})
@@ -289,7 +290,8 @@ case "$PHASE" in
     ;;
 
   *)
-    echo "Usage : bash docs/postman/integration-resilience-scenarios.sh <phase1|phase2|phase3|phase4|phase5|phase6>"
+    echo "Usage : [BASE_URL=...] [HEALTH_URL=...] bash docs/postman/integration-resilience-scenarios.sh <phase1|phase2|phase3|phase4|phase5|phase6>"
+    echo "  Exemple Gateway : BASE_URL=http://localhost:8080 HEALTH_URL=http://localhost:8080/ops/orchestrator/health bash docs/postman/integration-resilience-scenarios.sh phase1"
     echo "  phase1 : 3 services UP  -> Export OpenAPI + Scenarios 1, 2, 3"
     echo "  phase2 : SOAP ARRETE    -> Scenarios 4 et 5a (PROVISIONAL + OPEN)"
     echo "  phase3 : SOAP REDEMARRE -> Scenarios 5b/5c et 6 (HALF_OPEN -> CLOSED + ELIGIBLE)"
