@@ -6,10 +6,13 @@ servers:
 - url: http://localhost:8081
   description: Generated server url
 tags:
+- name: Defenses
+  description: Gestion des demandes de soutenance de PFE et vérification d'éligibilité
 - name: Slots
   description: Gestion des créneaux et salles disponibles
-- name: Defenses
-  description: Gestion CRUD des demandes de soutenance de PFE
+- name: Schedules
+  description: "Optimisation gRPC, évaluation de conflits et publication officielle\
+    \ SOAP"
 paths:
   /api/v1/defenses/{id}:
     get:
@@ -150,6 +153,108 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/SlotResponseDto"
+  /api/v1/schedules/{id}/publications:
+    post:
+      tags:
+      - Schedules
+      summary: Publier officiellement le dernier planning DRAFT sans conflit via SOAP
+      operationId: publish
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "409":
+          description: Incohérence de doublon d'enregistrement SOAP
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SchedulePublicationResponseDto"
+        "200":
+          description: Planning publié avec les codes officiels REG-...
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SchedulePublicationResponseDto"
+        "503":
+          description: Service de scolarité SOAP indisponible (les succès précédents
+            restent enregistrés)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SchedulePublicationResponseDto"
+        "404":
+          description: Planning ou étudiant introuvable
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SchedulePublicationResponseDto"
+        "422":
+          description: "Planning non publiable (UNOPTIMIZED_FALLBACK, conflits ou\
+            \ non dernier DRAFT)"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/SchedulePublicationResponseDto"
+  /api/v1/schedules/optimization-runs:
+    post:
+      tags:
+      - Schedules
+      summary: Lancer une optimisation de planning via gRPC (avec repli séquentiel)
+      operationId: createOptimizationRun
+      responses:
+        "201":
+          description: Planning généré (DRAFT ou UNOPTIMIZED_FALLBACK)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OptimizationRunResponseDto"
+        "422":
+          description: Aucune demande éligible ou créneaux insuffisants
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/OptimizationRunResponseDto"
+  /api/v1/schedules/evaluations:
+    post:
+      tags:
+      - Schedules
+      summary: Évaluer les conflits d'un planning proposé via gRPC unaire
+      operationId: evaluate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleEvaluationRequestDto"
+        required: true
+      responses:
+        "200":
+          description: Résultat d'évaluation retourné
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ScheduleEvaluationResponseDto"
+        "400":
+          description: Requête invalide (liste vide ou champs manquants)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ScheduleEvaluationResponseDto"
+        "422":
+          description: Rejet métier du moteur gRPC
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ScheduleEvaluationResponseDto"
+        "503":
+          description: Service d'optimisation gRPC indisponible
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ScheduleEvaluationResponseDto"
   /api/v1/defenses:
     get:
       tags:
@@ -168,7 +273,7 @@ paths:
     post:
       tags:
       - Defenses
-      summary: Créer une demande de soutenance
+      summary: Créer une demande de soutenance avec contrôle d'éligibilité SOAP
       operationId: create_1
       requestBody:
         content:
@@ -183,20 +288,65 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/DefenseResponseDto"
+        "404":
+          description: Étudiant inconnu auprès du service de scolarité
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
         "409":
           description: Une demande existe déjà pour ce matricule
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/DefenseResponseDto"
+        "422":
+          description: Jury non distinct ou étudiant non éligible
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
         "201":
-          description: Demande créée (en-tête Location renseigné)
+          description: Demande créée (ELIGIBLE ou PROVISIONAL_PENDING_CLEARANCE en
+            repli)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+  /api/v1/defenses/{id}/clearances:
+    post:
+      tags:
+      - Defenses
+      summary: Revérifier l'éligibilité d'une demande provisoire auprès de la scolarité
+      operationId: recheckClearance
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "404":
+          description: Demande ou étudiant introuvable
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "200":
+          description: Éligibilité confirmée (statut passé à ELIGIBLE)
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/DefenseResponseDto"
+        "503":
+          description: Service de scolarité temporairement indisponible
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/DefenseResponseDto"
         "422":
-          description: Règle métier violée (membres du jury non distincts)
+          description: Demande non provisoire ou étudiant non éligible
           content:
             '*/*':
               schema:
@@ -304,3 +454,154 @@ components:
           type: string
         available:
           type: boolean
+    PublishedDefenseDto:
+      type: object
+      properties:
+        defenseId:
+          type: integer
+          format: int64
+        studentMatricule:
+          type: string
+        registryCode:
+          type: string
+        status:
+          type: string
+          enum:
+          - PROVISIONAL_PENDING_CLEARANCE
+          - ELIGIBLE
+          - SCHEDULED
+          - PUBLISHED
+        alreadyRegistered:
+          type: boolean
+    SchedulePublicationResponseDto:
+      type: object
+      properties:
+        scheduleId:
+          type: integer
+          format: int64
+        scheduleStatus:
+          type: string
+          enum:
+          - DRAFT
+          - UNOPTIMIZED_FALLBACK
+          - PUBLISHED
+        publishedCount:
+          type: integer
+          format: int32
+        defenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublishedDefenseDto"
+    OptimizationRunResponseDto:
+      type: object
+      properties:
+        scheduleId:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum:
+          - DRAFT
+          - UNOPTIMIZED_FALLBACK
+          - PUBLISHED
+        fallbackUsed:
+          type: boolean
+        totalAssigned:
+          type: integer
+          format: int32
+        conflictCount:
+          type: integer
+          format: int32
+        balanceScore:
+          type: number
+          format: double
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/OptimizationStepDto"
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposedAssignmentDto"
+    OptimizationStepDto:
+      type: object
+      properties:
+        stage:
+          type: string
+        passNumber:
+          type: integer
+          format: int32
+        assignedCount:
+          type: integer
+          format: int32
+        conflictCount:
+          type: integer
+          format: int32
+        balanceScore:
+          type: number
+          format: double
+    ProposedAssignmentDto:
+      required:
+      - presidentCode
+      - rapporteurCode
+      - requestId
+      - roomCode
+      - slotCode
+      - supervisorCode
+      type: object
+      properties:
+        requestId:
+          type: string
+          example: "1"
+        slotCode:
+          type: string
+          example: 2026-06-15_09:00
+        roomCode:
+          type: string
+          example: SALLE-A1
+        supervisorCode:
+          type: string
+          example: PROF-01
+        presidentCode:
+          type: string
+          example: PROF-02
+        rapporteurCode:
+          type: string
+          example: PROF-03
+    ScheduleEvaluationRequestDto:
+      required:
+      - assignments
+      type: object
+      properties:
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposedAssignmentDto"
+    ConflictDto:
+      type: object
+      properties:
+        type:
+          type: string
+        slotCode:
+          type: string
+        resourceCode:
+          type: string
+        requestIds:
+          type: array
+          items:
+            type: string
+    ScheduleEvaluationResponseDto:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        conflictCount:
+          type: integer
+          format: int32
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConflictDto"
