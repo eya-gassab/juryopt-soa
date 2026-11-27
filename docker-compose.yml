@@ -1,0 +1,147 @@
+services:
+  registrar-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${REGISTRAR_DB}
+    volumes:
+      - registrar-db-data:/var/lib/postgresql/data
+    networks:
+      - juryopt-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  optimizer-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${OPTIMIZER_DB}
+    volumes:
+      - optimizer-db-data:/var/lib/postgresql/data
+    networks:
+      - juryopt-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  defense-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${DEFENSE_DB}
+    volumes:
+      - defense-db-data:/var/lib/postgresql/data
+    networks:
+      - juryopt-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  registrar-clearance-service:
+    build:
+      context: .
+      dockerfile: registrar-clearance-service/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://registrar-db:5432/${REGISTRAR_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      registrar-db:
+        condition: service_healthy
+    networks:
+      - juryopt-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8083/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  schedule-optimizer-service:
+    build:
+      context: .
+      dockerfile: schedule-optimizer-service/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://optimizer-db:5432/${OPTIMIZER_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      optimizer-db:
+        condition: service_healthy
+    networks:
+      - juryopt-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  defense-orchestrator-service:
+    build:
+      context: .
+      dockerfile: defense-orchestrator-service/Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://defense-db:5432/${DEFENSE_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SOAP_SERVICE_URL: ${SOAP_SERVICE_URL}
+      GRPC_OPTIMIZER_HOST: ${GRPC_OPTIMIZER_HOST}
+      GRPC_OPTIMIZER_PORT: ${GRPC_OPTIMIZER_PORT}
+    depends_on:
+      defense-db:
+        condition: service_healthy
+      registrar-clearance-service:
+        condition: service_healthy
+      schedule-optimizer-service:
+        condition: service_healthy
+    networks:
+      - juryopt-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ORCHESTRATOR_SERVICE_URL: ${ORCHESTRATOR_SERVICE_URL}
+    depends_on:
+      defense-orchestrator-service:
+        condition: service_healthy
+    networks:
+      - juryopt-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  juryopt-net:
+    driver: bridge
+
+volumes:
+  registrar-db-data:
+  optimizer-db-data:
+  defense-db-data:
