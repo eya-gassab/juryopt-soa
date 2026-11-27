@@ -23,7 +23,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 @RestController
 @RequestMapping("/api/v1/defenses")
-@Tag(name = "Defenses", description = "Gestion CRUD des demandes de soutenance de PFE")
+@Tag(name = "Defenses", description = "Gestion des demandes de soutenance de PFE et vérification d'éligibilité")
 public class DefenseController {
 
     private final DefenseService defenseService;
@@ -33,12 +33,13 @@ public class DefenseController {
     }
 
     @PostMapping
-    @Operation(summary = "Créer une demande de soutenance")
+    @Operation(summary = "Créer une demande de soutenance avec contrôle d'éligibilité SOAP")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Demande créée (en-tête Location renseigné)"),
+            @ApiResponse(responseCode = "201", description = "Demande créée (ELIGIBLE ou PROVISIONAL_PENDING_CLEARANCE en repli)"),
             @ApiResponse(responseCode = "400", description = "Données d'entrée invalides"),
+            @ApiResponse(responseCode = "404", description = "Étudiant inconnu auprès du service de scolarité"),
             @ApiResponse(responseCode = "409", description = "Une demande existe déjà pour ce matricule"),
-            @ApiResponse(responseCode = "422", description = "Règle métier violée (membres du jury non distincts)")
+            @ApiResponse(responseCode = "422", description = "Jury non distinct ou étudiant non éligible")
     })
     public ResponseEntity<DefenseResponseDto> create(@Valid @RequestBody DefenseRequestDto request) {
         DefenseResponseDto created = defenseService.create(request);
@@ -47,6 +48,18 @@ public class DefenseController {
                 .buildAndExpand(created.id())
                 .toUri();
         return ResponseEntity.created(location).body(created);
+    }
+
+    @PostMapping("/{id}/clearances")
+    @Operation(summary = "Revérifier l'éligibilité d'une demande provisoire auprès de la scolarité")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Éligibilité confirmée (statut passé à ELIGIBLE)"),
+            @ApiResponse(responseCode = "404", description = "Demande ou étudiant introuvable"),
+            @ApiResponse(responseCode = "422", description = "Demande non provisoire ou étudiant non éligible"),
+            @ApiResponse(responseCode = "503", description = "Service de scolarité temporairement indisponible")
+    })
+    public ResponseEntity<DefenseResponseDto> recheckClearance(@PathVariable Long id) {
+        return ResponseEntity.ok(defenseService.recheckClearance(id));
     }
 
     @GetMapping

@@ -1,14 +1,18 @@
 package com.juryopt.orchestrator.service;
 
+import com.juryopt.orchestrator.client.RegistrarSoapClient;
+import com.juryopt.orchestrator.client.RegistrarSoapClient.ClearanceResult;
 import com.juryopt.orchestrator.domain.DefenseRequest;
 import com.juryopt.orchestrator.domain.DefenseStatus;
 import com.juryopt.orchestrator.dto.DefenseRequestDto;
 import com.juryopt.orchestrator.dto.DefenseResponseDto;
 import com.juryopt.orchestrator.exception.BusinessRuleException;
 import com.juryopt.orchestrator.exception.DuplicateResourceException;
+import com.juryopt.orchestrator.exception.ExternalServiceUnavailableException;
 import com.juryopt.orchestrator.exception.ResourceNotFoundException;
 import com.juryopt.orchestrator.repository.DefenseRequestRepository;
 import java.util.List;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,12 +20,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class DefenseService {
 
     private final DefenseRequestRepository defenseRepository;
+    private final RegistrarSoapClient registrarSoapClient;
 
-    public DefenseService(DefenseRequestRepository defenseRepository) {
+    public DefenseService(DefenseRequestRepository defenseRepository,
+                          RegistrarSoapClient registrarSoapClient) {
         this.defenseRepository = defenseRepository;
+        this.registrarSoapClient = registrarSoapClient;
     }
 
-    @Transactional
     public DefenseResponseDto create(DefenseRequestDto dto) {
         validateDistinctJury(dto);
 
@@ -31,17 +37,59 @@ public class DefenseService {
             );
         }
 
+        ClearanceResult clearance = registrarSoapClient.verifyEligibility(dto.studentMatricule());
+
+        DefenseStatus status = clearance.verified()
+                ? DefenseStatus.ELIGIBLE
+                : DefenseStatus.PROVISIONAL_PENDING_CLEARANCE;
+        String resolvedName = clearance.verified()
+                ? clearance.fullName()
+                : normalizeOptionalText(dto.studentName());
+
         DefenseRequest entity = new DefenseRequest(
                 dto.studentMatricule(),
-                normalizeOptionalText(dto.studentName()),
+                resolvedName,
                 dto.projectTitle().trim(),
                 dto.supervisorCode(),
                 dto.presidentCode(),
                 dto.rapporteurCode(),
-                DefenseStatus.PROVISIONAL_PENDING_CLEARANCE
+                status
         );
+        if (clearance.verified()) {
+            entity.setClearanceToken(clearance.clearanceToken());
+        }
 
-        return DefenseResponseDto.from(defenseRepository.save(entity));
+        try {
+            return DefenseResponseDto.from(defenseRepository.save(entity));
+        } catch (DataIntegrityViolationException ex) {
+            throw new DuplicateResourceException(
+                    "Une demande existe déjà pour le matricule " + dto.studentMatricule()
+            );
+        }
+    }
+
+    public DefenseResponseDto recheckClearance(Long id) {
+        DefenseRequest existing = getOrThrow(id);
+
+        if (existing.getStatus() != DefenseStatus.PROVISIONAL_PENDING_CLEARANCE) {
+            throw new BusinessRuleException(
+                    "La revérification n'est autorisée que pour une demande PROVISIONAL_PENDING_CLEARANCE (statut actuel : "
+                            + existing.getStatus() + ")."
+            );
+        }
+
+        ClearanceResult clearance = registrarSoapClient.verifyEligibility(existing.getStudentMatricule());
+        if (!clearance.verified()) {
+            throw new ExternalServiceUnavailableException(
+                    "Le service de scolarité est temporairement indisponible. Impossible de revérifier la demande " + id + "."
+            );
+        }
+
+        existing.setStatus(DefenseStatus.ELIGIBLE);
+        existing.setStudentName(clearance.fullName());
+        existing.setClearanceToken(clearance.clearanceToken());
+
+        return DefenseResponseDto.from(defenseRepository.save(existing));
     }
 
     @Transactional(readOnly = true)

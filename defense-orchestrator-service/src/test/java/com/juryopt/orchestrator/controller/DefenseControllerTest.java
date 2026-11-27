@@ -15,6 +15,7 @@ import com.juryopt.orchestrator.domain.DefenseStatus;
 import com.juryopt.orchestrator.dto.DefenseResponseDto;
 import com.juryopt.orchestrator.exception.BusinessRuleException;
 import com.juryopt.orchestrator.exception.DuplicateResourceException;
+import com.juryopt.orchestrator.exception.ExternalServiceUnavailableException;
 import com.juryopt.orchestrator.exception.GlobalExceptionHandler;
 import com.juryopt.orchestrator.exception.ResourceNotFoundException;
 import com.juryopt.orchestrator.service.DefenseService;
@@ -123,6 +124,34 @@ class DefenseControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.title").value("Resource Conflict"))
                 .andExpect(jsonPath("$.status").value(409));
+    }
+
+    @Test
+    void postDefenseClearance_shouldReturn200WhenEligible() throws Exception {
+        DefenseResponseDto response = new DefenseResponseDto(
+                1L, "ETU-2026-001", "Amine Ben Salem",
+                "Plateforme SOA de planification des soutenances",
+                "PROF-01", "PROF-02", "PROF-03",
+                DefenseStatus.ELIGIBLE,
+                "CLR-12345678", null, null, null
+        );
+        when(defenseService.recheckClearance(1L)).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/defenses/1/clearances"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ELIGIBLE"))
+                .andExpect(jsonPath("$.clearanceToken").value("CLR-12345678"));
+    }
+
+    @Test
+    void postDefenseClearance_whenSoapDown_shouldReturn503ProblemDetail() throws Exception {
+        when(defenseService.recheckClearance(1L))
+                .thenThrow(new ExternalServiceUnavailableException("Service de scolarité indisponible"));
+
+        mockMvc.perform(post("/api/v1/defenses/1/clearances"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.title").value("Service Unavailable"))
+                .andExpect(jsonPath("$.status").value(503));
     }
 
     @Test

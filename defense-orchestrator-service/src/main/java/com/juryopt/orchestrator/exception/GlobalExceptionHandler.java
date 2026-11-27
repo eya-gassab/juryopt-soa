@@ -69,6 +69,17 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(ExternalServiceUnavailableException.class)
+    public ProblemDetail handleServiceUnavailable(ExternalServiceUnavailableException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                ex.getMessage()
+        );
+        problem.setType(URI.create("https://juryopt.com/errors/service-unavailable"));
+        problem.setTitle("Service Unavailable");
+        return problem;
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnexpected(Exception ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(
