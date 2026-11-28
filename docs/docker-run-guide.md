@@ -1,4 +1,4 @@
-# JuryOpt — Guide d'exécution Docker Compose & Scénarios Gateway
+# JuryOpt — Guide d'exécution Docker Compose, Tests & Démo Gateway
 
 ## 1. Prérequis et configuration
 
