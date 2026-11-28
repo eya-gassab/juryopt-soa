@@ -166,30 +166,32 @@ public class ScheduleWorkflowService {
                         defense.getAssignedRoomCode(),
                         jurySummary
                 );
-                defense.setRegistryCode(registration.registryCode());
-                defense.setStatus(DefenseStatus.PUBLISHED);
-                defenseRepository.save(defense);
+                DefenseRequest published = persistenceService.markDefensePublishedAndReserveSlot(
+                        defense,
+                        registration.registryCode()
+                );
                 newlySavedCount++;
                 publishedItems.add(new PublishedDefenseDto(
-                        defense.getId(),
-                        defense.getStudentMatricule(),
-                        defense.getRegistryCode(),
-                        defense.getStatus(),
+                        published.getId(),
+                        published.getStudentMatricule(),
+                        published.getRegistryCode(),
+                        published.getStatus(),
                         false
                 ));
             } catch (DuplicateRegistrationFaultException dup) {
                 if (matchesDefense(defense, dup)) {
                     log.info("Doublon SOAP cohérent pour {} (code existant {}) -> marqué PUBLISHED",
                             defense.getStudentMatricule(), dup.getExistingRegistryCode());
-                    defense.setRegistryCode(dup.getExistingRegistryCode());
-                    defense.setStatus(DefenseStatus.PUBLISHED);
-                    defenseRepository.save(defense);
+                    DefenseRequest published = persistenceService.markDefensePublishedAndReserveSlot(
+                            defense,
+                            dup.getExistingRegistryCode()
+                    );
                     newlySavedCount++;
                     publishedItems.add(new PublishedDefenseDto(
-                            defense.getId(),
-                            defense.getStudentMatricule(),
-                            defense.getRegistryCode(),
-                            defense.getStatus(),
+                            published.getId(),
+                            published.getStudentMatricule(),
+                            published.getRegistryCode(),
+                            published.getStatus(),
                             true
                     ));
                 } else {

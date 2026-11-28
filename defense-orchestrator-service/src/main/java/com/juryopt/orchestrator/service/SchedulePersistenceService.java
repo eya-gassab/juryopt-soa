@@ -7,6 +7,7 @@ import com.juryopt.orchestrator.domain.ScheduleStatus;
 import com.juryopt.orchestrator.dto.ProposedAssignmentDto;
 import com.juryopt.orchestrator.repository.DefenseRequestRepository;
 import com.juryopt.orchestrator.repository.DefenseScheduleRepository;
+import com.juryopt.orchestrator.repository.DefenseSlotRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -20,11 +21,14 @@ public class SchedulePersistenceService {
 
     private final DefenseRequestRepository defenseRepository;
     private final DefenseScheduleRepository scheduleRepository;
+    private final DefenseSlotRepository slotRepository;
 
     public SchedulePersistenceService(DefenseRequestRepository defenseRepository,
-                                      DefenseScheduleRepository scheduleRepository) {
+                                      DefenseScheduleRepository scheduleRepository,
+                                      DefenseSlotRepository slotRepository) {
         this.defenseRepository = defenseRepository;
         this.scheduleRepository = scheduleRepository;
+        this.slotRepository = slotRepository;
     }
 
     @Transactional
@@ -55,5 +59,23 @@ public class SchedulePersistenceService {
                 balanceScore
         );
         return scheduleRepository.save(schedule);
+    }
+
+    @Transactional
+    public DefenseRequest markDefensePublishedAndReserveSlot(DefenseRequest defense, String registryCode) {
+        defense.setRegistryCode(registryCode);
+        defense.setStatus(DefenseStatus.PUBLISHED);
+        DefenseRequest saved = defenseRepository.save(defense);
+
+        if (saved.getAssignedSlotCode() != null && saved.getAssignedRoomCode() != null) {
+            slotRepository.findBySlotCodeAndRoomCode(saved.getAssignedSlotCode(), saved.getAssignedRoomCode())
+                    .ifPresent(slot -> {
+                        if (slot.isAvailable()) {
+                            slot.setAvailable(false);
+                            slotRepository.save(slot);
+                        }
+                    });
+        }
+        return saved;
     }
 }

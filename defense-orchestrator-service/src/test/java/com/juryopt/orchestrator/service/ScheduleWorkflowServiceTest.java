@@ -155,6 +155,7 @@ class ScheduleWorkflowServiceTest {
                 .thenThrow(new DuplicateRegistrationFaultException("ETU-2026-001", "REG-2026-0001", "Déjà enregistrée"));
         when(registrarSoapClient.registerOfficialDefense(eq("ETU-2026-002"), any(), any(), any(), any()))
                 .thenReturn(new RegistrationResult("REG-2026-0002", "2026-11-26T21:00:00"));
+        stubMarkPublishedAndReserveSlot();
 
         SchedulePublicationResponseDto result = workflowService.publishSchedule(4L);
 
@@ -164,12 +165,13 @@ class ScheduleWorkflowServiceTest {
         assertThat(d1.getStatus()).isEqualTo(DefenseStatus.PUBLISHED);
         assertThat(d2.getRegistryCode()).isEqualTo("REG-2026-0002");
         assertThat(d2.getStatus()).isEqualTo(DefenseStatus.PUBLISHED);
-        verify(defenseRepository, times(2)).save(any(DefenseRequest.class));
+        verify(persistenceService).markDefensePublishedAndReserveSlot(d1, "REG-2026-0001");
+        verify(persistenceService).markDefensePublishedAndReserveSlot(d2, "REG-2026-0002");
         verify(scheduleRepository).save(draft);
     }
 
     @Test
-    void publishSchedule_whenSoapFailsMidway_shouldPersistFirstAndKeepScheduleDraft() {
+    void publishSchedule_whenSoapFailsMidway_shouldPersistAndReserveFirstOnlyAndKeepScheduleDraft() {
         DefenseSchedule draft = buildSchedule(5L, ScheduleStatus.DRAFT, 2, 0);
         DefenseRequest d1 = buildScheduledDefense(1L, "ETU-2026-001", "CLR-11111111");
         DefenseRequest d2 = buildScheduledDefense(2L, "ETU-2026-002", "CLR-22222222");
@@ -182,6 +184,7 @@ class ScheduleWorkflowServiceTest {
                 .thenReturn(new RegistrationResult("REG-2026-0001", "2026-11-26T21:00:00"));
         when(registrarSoapClient.registerOfficialDefense(eq("ETU-2026-002"), any(), any(), any(), any()))
                 .thenThrow(new ExternalServiceUnavailableException("Service SOAP indisponible"));
+        stubMarkPublishedAndReserveSlot();
 
         assertThatThrownBy(() -> workflowService.publishSchedule(5L))
                 .isInstanceOf(ExternalServiceUnavailableException.class)
@@ -190,8 +193,20 @@ class ScheduleWorkflowServiceTest {
         assertThat(d1.getStatus()).isEqualTo(DefenseStatus.PUBLISHED);
         assertThat(d2.getStatus()).isEqualTo(DefenseStatus.SCHEDULED);
         assertThat(draft.getStatus()).isEqualTo(ScheduleStatus.DRAFT);
-        verify(defenseRepository, times(1)).save(d1);
+        verify(persistenceService, times(1)).markDefensePublishedAndReserveSlot(d1, "REG-2026-0001");
+        verify(persistenceService, never()).markDefensePublishedAndReserveSlot(eq(d2), any());
         verify(scheduleRepository, never()).save(any());
+    }
+
+    private void stubMarkPublishedAndReserveSlot() {
+        when(persistenceService.markDefensePublishedAndReserveSlot(any(DefenseRequest.class), any()))
+                .thenAnswer(inv -> {
+                    DefenseRequest req = inv.getArgument(0);
+                    String code = inv.getArgument(1);
+                    req.setRegistryCode(code);
+                    req.setStatus(DefenseStatus.PUBLISHED);
+                    return req;
+                });
     }
 
     private DefenseRequest buildDefense(Long id, String matricule, DefenseStatus status, String token) {
