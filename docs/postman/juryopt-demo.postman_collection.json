@@ -1,0 +1,963 @@
+{
+  "info": {
+    "name": "JuryOpt SOA - Demo Soutenance (Gateway :8080)",
+    "description": "Collection de demonstration JuryOpt via api-gateway (:8080). Executer les dossiers dans l'ordre 01 -> 06 sur des bases propres (apres `docker compose down -v && docker compose up -d`). Suivre les consignes `docker compose stop` / `start` indiquees dans les dossiers 03, 05 et 06.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "defense1Id", "value": "" },
+    { "key": "defense2Id", "value": "" },
+    { "key": "defense3Id", "value": "" },
+    { "key": "fallbackScheduleId", "value": "" },
+    { "key": "draftScheduleId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 - Supervision & Contrats (Gateway)",
+      "description": "Verification de la sante de la Gateway, des Circuit Breakers de l'orchestrateur et du contrat OpenAPI via le port unique 8080.",
+      "item": [
+        {
+          "name": "01.1 - Health API Gateway (200 UP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Gateway UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        },
+        {
+          "name": "01.2 - Health Orchestrateur & Circuit Breakers (200 UP / CLOSED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Orchestrateur UP', () => pm.expect(body.status).to.eql('UP'));",
+                  "pm.test('Circuit Breakers CLOSED', () => {",
+                  "  pm.expect(body.components.circuitBreakers.details.registrarSoap.details.state).to.eql('CLOSED');",
+                  "  pm.expect(body.components.circuitBreakers.details.optimizerGrpc.details.state).to.eql('CLOSED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ops/orchestrator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["ops", "orchestrator", "health"]
+            }
+          }
+        },
+        {
+          "name": "01.3 - Contrat OpenAPI YAML via Gateway (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Serveur expose :8080', () => pm.expect(pm.response.text()).to.include('localhost:8080'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v3/api-docs.yaml",
+              "host": ["{{baseUrl}}"],
+              "path": ["v3", "api-docs.yaml"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Nominal SOAP & Erreurs (400 / 404 / 409 / 422)",
+      "description": "Creation d'un etudiant eligible (ETU-2026-001), mise a jour sans perte de clearance, puis validation des erreurs 400, 404, 409 et 422 sans ouvrir le Circuit Breaker.",
+      "item": [
+        {
+          "name": "02.1 - Creer demande eligible ETU-2026-001 (201 ELIGIBLE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Location en :8080', () => pm.expect(pm.response.headers.get('Location')).to.include('localhost:8080/api/v1/defenses/'));",
+                  "const body = pm.response.json();",
+                  "pm.test('Statut ELIGIBLE + token CLR', () => {",
+                  "  pm.expect(body.status).to.eql('ELIGIBLE');",
+                  "  pm.expect(body.studentName).to.eql('Amine Ben Salem');",
+                  "  pm.expect(body.clearanceToken).to.match(/^CLR-/);",
+                  "});",
+                  "pm.collectionVariables.set('defense1Id', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-001\",\n  \"projectTitle\": \"Plateforme SOA de planification des soutenances\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-02\",\n  \"rapporteurCode\": \"PROF-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "02.2 - PUT meme matricule conserve ELIGIBLE et nom officiel (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Statut et nom officiel conserves', () => {",
+                  "  pm.expect(body.status).to.eql('ELIGIBLE');",
+                  "  pm.expect(body.studentName).to.eql('Amine Ben Salem');",
+                  "  pm.expect(body.clearanceToken).to.match(/^CLR-/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-001\",\n  \"studentName\": \"Nom Ignore\",\n  \"projectTitle\": \"Plateforme SOA JuryOpt - Version finale\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-02\",\n  \"rapporteurCode\": \"PROF-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses/{{defense1Id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses", "{{defense1Id}}"]
+            }
+          }
+        },
+        {
+          "name": "02.3 - Erreur 400 - Format matricule invalide",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Champ errors.studentMatricule present', () => pm.expect(pm.response.json().errors.studentMatricule).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"INVALID\",\n  \"projectTitle\": \"Test validation 400\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-02\",\n  \"rapporteurCode\": \"PROF-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "02.4 - Erreur 409 - Doublon matricule ETU-2026-001",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('ProblemDetail Conflict', () => pm.expect(pm.response.json().status).to.eql(409));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-001\",\n  \"projectTitle\": \"Doublon matricule\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-02\",\n  \"rapporteurCode\": \"PROF-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "02.5 - Erreur 422 - Jury non distinct",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-002\",\n  \"projectTitle\": \"Test jury non distinct\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-01\",\n  \"rapporteurCode\": \"PROF-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "02.6 - Erreur 422 SOAP - Credits insuffisants ETU-2026-005",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Message credits insuffisants', () => pm.expect(pm.response.json().detail).to.include('150/180'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-005\",\n  \"projectTitle\": \"Sujet credits insuffisants\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-02\",\n  \"rapporteurCode\": \"PROF-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "02.7 - Erreur 422 SOAP - Blocage administratif ETU-2026-006",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Message blocage administratif', () => pm.expect(pm.response.json().detail).to.include('Blocage administratif'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-006\",\n  \"projectTitle\": \"Sujet blocage administratif\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-02\",\n  \"rapporteurCode\": \"PROF-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "02.8 - Erreur 404 SOAP - Etudiant inconnu ETU-2026-999",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-999\",\n  \"projectTitle\": \"Sujet etudiant inconnu\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-02\",\n  \"rapporteurCode\": \"PROF-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "02.9 - Erreur 404 - Demande introuvable (id=99999)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses/99999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses", "99999"]
+            }
+          }
+        },
+        {
+          "name": "02.10 - Verifier registrarSoap toujours CLOSED apres erreurs metier",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const cb = pm.response.json().components.circuitBreakers.details.registrarSoap.details;",
+                  "pm.test('Circuit CLOSED et 0 failedCalls', () => {",
+                  "  pm.expect(cb.state).to.eql('CLOSED');",
+                  "  pm.expect(cb.failedCalls).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ops/orchestrator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["ops", "orchestrator", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Panne SOAP en direct & Repli Resilience4j",
+      "description": "ETAPE MANUELLE 1 : avant la requete 03.1, lancer dans WSL :\n  docker compose stop registrar-clearance-service\n\nETAPE MANUELLE 2 : apres la requete 03.4, lancer dans WSL :\n  docker compose start registrar-clearance-service\n  Attendre que le conteneur soit healthy puis attendre 16 secondes (wait-duration-in-open-state=15s) avant d'executer 03.5.",
+      "item": [
+        {
+          "name": "03.1 - [APRES docker compose stop registrar-clearance-service] Creer ETU-2026-002 -> Repli PROVISIONAL (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 en repli', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Statut PROVISIONAL_PENDING_CLEARANCE', () => {",
+                  "  pm.expect(body.status).to.eql('PROVISIONAL_PENDING_CLEARANCE');",
+                  "  pm.expect(body.clearanceToken).to.eql(null);",
+                  "});",
+                  "pm.collectionVariables.set('defense2Id', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-002\",\n  \"studentName\": \"Sarra Trabelsi\",\n  \"projectTitle\": \"Orchestration resiliente des soutenances\",\n  \"supervisorCode\": \"PROF-01\",\n  \"presidentCode\": \"PROF-04\",\n  \"rapporteurCode\": \"PROF-05\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            },
+            "description": "Prerequis : executer `docker compose stop registrar-clearance-service` avant cet appel."
+          }
+        },
+        {
+          "name": "03.2 - Creer ETU-2026-003 -> Repli PROVISIONAL + ouverture circuit OPEN (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 en repli', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Statut PROVISIONAL_PENDING_CLEARANCE', () => pm.expect(body.status).to.eql('PROVISIONAL_PENDING_CLEARANCE'));",
+                  "pm.collectionVariables.set('defense3Id', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentMatricule\": \"ETU-2026-003\",\n  \"studentName\": \"Youssef Khelifi\",\n  \"projectTitle\": \"Optimisation multi-criteres des jurys\",\n  \"supervisorCode\": \"PROF-02\",\n  \"presidentCode\": \"PROF-04\",\n  \"rapporteurCode\": \"PROF-06\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "03.3 - Erreur 503 - Reverifier clearance pendant panne SOAP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 503 Service Unavailable', () => pm.response.to.have.status(503));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses/{{defense2Id}}/clearances",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses", "{{defense2Id}}", "clearances"]
+            }
+          }
+        },
+        {
+          "name": "03.4 - Verifier registrarSoap OPEN mais orchestrateur UP (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Orchestrateur UP et registrarSoap OPEN', () => {",
+                  "  pm.expect(body.status).to.eql('UP');",
+                  "  pm.expect(body.components.circuitBreakers.details.registrarSoap.details.state).to.eql('OPEN');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ops/orchestrator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["ops", "orchestrator", "health"]
+            }
+          }
+        },
+        {
+          "name": "03.5 - [APRES docker compose start registrar-clearance-service + healthy + 16s] Reverifier ETU-2026-002 (200 ELIGIBLE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Promu ELIGIBLE', () => {",
+                  "  pm.expect(body.status).to.eql('ELIGIBLE');",
+                  "  pm.expect(body.clearanceToken).to.match(/^CLR-/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses/{{defense2Id}}/clearances",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses", "{{defense2Id}}", "clearances"]
+            },
+            "description": "Prerequis : lancer `docker compose start registrar-clearance-service`, attendre healthy puis 16s."
+          }
+        },
+        {
+          "name": "03.6 - Reverifier ETU-2026-003 (200 ELIGIBLE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Promu ELIGIBLE', () => pm.expect(pm.response.json().status).to.eql('ELIGIBLE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses/{{defense3Id}}/clearances",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses", "{{defense3Id}}", "clearances"]
+            }
+          }
+        },
+        {
+          "name": "03.7 - Verifier retour registrarSoap CLOSED (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Circuit CLOSED', () => pm.expect(pm.response.json().components.circuitBreakers.details.registrarSoap.details.state).to.eql('CLOSED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ops/orchestrator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["ops", "orchestrator", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Creneaux, Optimisation gRPC & Evaluation unaire",
+      "description": "Creation de 3 creneaux disponibles, optimisation gRPC streaming (5 etapes -> DRAFT 0 conflit) et evaluation unaire avec puis sans conflit.",
+      "item": [
+        {
+          "name": "04.1 - Creer creneau 1 (2026-06-15_09:00 / SALLE-A1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slotCode\": \"2026-06-15_09:00\",\n  \"roomCode\": \"SALLE-A1\",\n  \"available\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/slots",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "slots"]
+            }
+          }
+        },
+        {
+          "name": "04.2 - Creer creneau 2 (2026-06-15_10:00 / SALLE-A1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slotCode\": \"2026-06-15_10:00\",\n  \"roomCode\": \"SALLE-A1\",\n  \"available\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/slots",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "slots"]
+            }
+          }
+        },
+        {
+          "name": "04.3 - Creer creneau 3 (2026-06-15_11:00 / SALLE-A2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('Status 201', () => pm.response.to.have.status(201));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slotCode\": \"2026-06-15_11:00\",\n  \"roomCode\": \"SALLE-A2\",\n  \"available\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/slots",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "slots"]
+            }
+          }
+        },
+        {
+          "name": "04.4 - Optimisation gRPC streaming (201 DRAFT, 5 etapes)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('DRAFT sans conflit avec 5 etapes', () => {",
+                  "  pm.expect(body.status).to.eql('DRAFT');",
+                  "  pm.expect(body.fallbackUsed).to.eql(false);",
+                  "  pm.expect(body.conflictCount).to.eql(0);",
+                  "  pm.expect(body.steps.length).to.eql(5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/schedules/optimization-runs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "schedules", "optimization-runs"]
+            }
+          }
+        },
+        {
+          "name": "04.5 - Evaluation gRPC unaire AVEC conflits (200 valid=false)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('2 conflits detectes', () => {",
+                  "  pm.expect(body.valid).to.eql(false);",
+                  "  pm.expect(body.conflictCount).to.eql(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assignments\": [\n    {\n      \"requestId\": \"1\",\n      \"slotCode\": \"2026-06-15_09:00\",\n      \"roomCode\": \"SALLE-A1\",\n      \"supervisorCode\": \"PROF-01\",\n      \"presidentCode\": \"PROF-02\",\n      \"rapporteurCode\": \"PROF-03\"\n    },\n    {\n      \"requestId\": \"2\",\n      \"slotCode\": \"2026-06-15_09:00\",\n      \"roomCode\": \"SALLE-A1\",\n      \"supervisorCode\": \"PROF-01\",\n      \"presidentCode\": \"PROF-04\",\n      \"rapporteurCode\": \"PROF-05\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/schedules/evaluations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "schedules", "evaluations"]
+            }
+          }
+        },
+        {
+          "name": "04.6 - Evaluation gRPC unaire SANS conflit (200 valid=true)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Planning valide (0 conflit)', () => {",
+                  "  pm.expect(body.valid).to.eql(true);",
+                  "  pm.expect(body.conflictCount).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assignments\": [\n    {\n      \"requestId\": \"1\",\n      \"slotCode\": \"2026-06-15_09:00\",\n      \"roomCode\": \"SALLE-A1\",\n      \"supervisorCode\": \"PROF-01\",\n      \"presidentCode\": \"PROF-02\",\n      \"rapporteurCode\": \"PROF-03\"\n    },\n    {\n      \"requestId\": \"2\",\n      \"slotCode\": \"2026-06-15_10:00\",\n      \"roomCode\": \"SALLE-A1\",\n      \"supervisorCode\": \"PROF-01\",\n      \"presidentCode\": \"PROF-04\",\n      \"rapporteurCode\": \"PROF-05\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/schedules/evaluations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "schedules", "evaluations"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Panne gRPC en direct & Repli UNOPTIMIZED_FALLBACK",
+      "description": "ETAPE MANUELLE : avant la requete 05.1, lancer dans WSL :\n  docker compose stop schedule-optimizer-service\n\nApres 05.3, lancer avant le dossier 06 :\n  docker compose start schedule-optimizer-service\n  Attendre que le conteneur soit healthy puis 16s.",
+      "item": [
+        {
+          "name": "05.1 - [APRES docker compose stop schedule-optimizer-service] Optimisation en repli (201 UNOPTIMIZED_FALLBACK)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201 en repli', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Statut UNOPTIMIZED_FALLBACK', () => {",
+                  "  pm.expect(body.status).to.eql('UNOPTIMIZED_FALLBACK');",
+                  "  pm.expect(body.fallbackUsed).to.eql(true);",
+                  "});",
+                  "pm.collectionVariables.set('fallbackScheduleId', body.scheduleId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/schedules/optimization-runs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "schedules", "optimization-runs"]
+            },
+            "description": "Prerequis : executer `docker compose stop schedule-optimizer-service` avant cet appel."
+          }
+        },
+        {
+          "name": "05.2 - Erreur 422 - Refus de publication d'un planning UNOPTIMIZED_FALLBACK",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('Detail mentionne UNOPTIMIZED_FALLBACK', () => pm.expect(pm.response.json().detail).to.include('UNOPTIMIZED_FALLBACK'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/schedules/{{fallbackScheduleId}}/publications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "schedules", "{{fallbackScheduleId}}", "publications"]
+            }
+          }
+        },
+        {
+          "name": "05.3 - Erreur 503 - Evaluation gRPC indisponible (pas de faux valide)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 503', () => pm.response.to.have.status(503));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assignments\": [\n    {\n      \"requestId\": \"1\",\n      \"slotCode\": \"2026-06-15_09:00\",\n      \"roomCode\": \"SALLE-A1\",\n      \"supervisorCode\": \"PROF-01\",\n      \"presidentCode\": \"PROF-02\",\n      \"rapporteurCode\": \"PROF-03\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/schedules/evaluations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "schedules", "evaluations"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Reprise gRPC, Publication officielle SOAP & Reservation creneaux",
+      "description": "ETAPE MANUELLE : avant 06.1, verifier que `docker compose start schedule-optimizer-service` est healthy puis attendre 16s.",
+      "item": [
+        {
+          "name": "06.1 - [APRES docker compose start schedule-optimizer-service + healthy + 16s] Nouvelle optimisation DRAFT (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('DRAFT sans conflit', () => {",
+                  "  pm.expect(body.status).to.eql('DRAFT');",
+                  "  pm.expect(body.conflictCount).to.eql(0);",
+                  "});",
+                  "pm.collectionVariables.set('draftScheduleId', body.scheduleId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/schedules/optimization-runs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "schedules", "optimization-runs"]
+            },
+            "description": "Prerequis : `docker compose start schedule-optimizer-service`, attendre healthy puis 16s."
+          }
+        },
+        {
+          "name": "06.2 - Publier officiellement via SOAP (200 PUBLISHED + REG-...)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Schedule PUBLISHED avec codes REG-', () => {",
+                  "  pm.expect(body.scheduleStatus).to.eql('PUBLISHED');",
+                  "  body.defenses.forEach(d => pm.expect(d.registryCode).to.match(/^REG-/));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/schedules/{{draftScheduleId}}/publications",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "schedules", "{{draftScheduleId}}", "publications"]
+            }
+          }
+        },
+        {
+          "name": "06.3 - Lister les soutenances publiees (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Toutes publiees', () => pm.response.json().forEach(d => pm.expect(d.status).to.eql('PUBLISHED')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/defenses",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "defenses"]
+            }
+          }
+        },
+        {
+          "name": "06.4 - Verifier reservation des creneaux publies (available=false)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Creneaux publies indisponibles', () => pm.response.json().forEach(s => pm.expect(s.available).to.eql(false)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/slots",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "slots"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
