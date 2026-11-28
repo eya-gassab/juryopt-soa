@@ -116,8 +116,16 @@ public class DefenseService {
             );
         }
 
-        existing.setStudentMatricule(dto.studentMatricule());
-        existing.setStudentName(normalizeOptionalText(dto.studentName()));
+        boolean matriculeChanged = !existing.getStudentMatricule().equals(dto.studentMatricule());
+        if (matriculeChanged) {
+            existing.setStudentMatricule(dto.studentMatricule());
+            existing.setStatus(DefenseStatus.PROVISIONAL_PENDING_CLEARANCE);
+            existing.setClearanceToken(null);
+            existing.setStudentName(null);
+        } else if (existing.getStatus() != DefenseStatus.ELIGIBLE) {
+            existing.setStudentName(normalizeOptionalText(dto.studentName()));
+        }
+
         existing.setProjectTitle(dto.projectTitle().trim());
         existing.setSupervisorCode(dto.supervisorCode());
         existing.setPresidentCode(dto.presidentCode());

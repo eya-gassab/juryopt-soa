@@ -186,6 +186,56 @@ class DefenseServiceTest {
     }
 
     @Test
+    void update_whenMatriculeChanges_shouldResetToProvisionalAndClearTokenAndName() {
+        DefenseRequest existing = new DefenseRequest(
+                "ETU-2026-001", "Amine Ben Salem", "Ancien titre",
+                "PROF-01", "PROF-02", "PROF-03", DefenseStatus.ELIGIBLE
+        );
+        existing.setClearanceToken("CLR-12345678");
+        DefenseRequestDto dto = new DefenseRequestDto(
+                "ETU-2026-002", "Sarra Trabelsi", "Nouveau titre PFE",
+                "PROF-01", "PROF-02", "PROF-04"
+        );
+        when(defenseRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(defenseRepository.existsByStudentMatriculeAndIdNot("ETU-2026-002", 1L)).thenReturn(false);
+        when(defenseRepository.save(any(DefenseRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DefenseResponseDto result = defenseService.update(1L, dto);
+
+        assertThat(result.studentMatricule()).isEqualTo("ETU-2026-002");
+        assertThat(result.status()).isEqualTo(DefenseStatus.PROVISIONAL_PENDING_CLEARANCE);
+        assertThat(result.clearanceToken()).isNull();
+        assertThat(result.studentName()).isNull();
+        assertThat(result.projectTitle()).isEqualTo("Nouveau titre PFE");
+        assertThat(result.rapporteurCode()).isEqualTo("PROF-04");
+    }
+
+    @Test
+    void update_whenMatriculeUnchangedOnEligibleDefense_shouldKeepStatusTokenAndOfficialName() {
+        DefenseRequest existing = new DefenseRequest(
+                "ETU-2026-001", "Amine Ben Salem", "Ancien titre",
+                "PROF-01", "PROF-02", "PROF-03", DefenseStatus.ELIGIBLE
+        );
+        existing.setClearanceToken("CLR-12345678");
+        DefenseRequestDto dto = new DefenseRequestDto(
+                "ETU-2026-001", "Autre Nom Saisi", "Nouveau titre PFE",
+                "PROF-01", "PROF-02", "PROF-04"
+        );
+        when(defenseRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(defenseRepository.existsByStudentMatriculeAndIdNot("ETU-2026-001", 1L)).thenReturn(false);
+        when(defenseRepository.save(any(DefenseRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DefenseResponseDto result = defenseService.update(1L, dto);
+
+        assertThat(result.studentMatricule()).isEqualTo("ETU-2026-001");
+        assertThat(result.status()).isEqualTo(DefenseStatus.ELIGIBLE);
+        assertThat(result.clearanceToken()).isEqualTo("CLR-12345678");
+        assertThat(result.studentName()).isEqualTo("Amine Ben Salem");
+        assertThat(result.projectTitle()).isEqualTo("Nouveau titre PFE");
+        assertThat(result.rapporteurCode()).isEqualTo("PROF-04");
+    }
+
+    @Test
     void update_shouldRejectWhenDefenseIsAlreadyScheduled() {
         DefenseRequest existing = new DefenseRequest(
                 "ETU-2026-001", "Amine Ben Salem", "Ancien titre",
