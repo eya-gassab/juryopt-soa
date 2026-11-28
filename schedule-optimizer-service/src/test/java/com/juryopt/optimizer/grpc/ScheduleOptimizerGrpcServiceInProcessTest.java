@@ -1,4 +1,4 @@
-git diff --statpackage com.juryopt.optimizer.grpc;
+package com.juryopt.optimizer.grpc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
